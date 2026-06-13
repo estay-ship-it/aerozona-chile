@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AeroZona Chile — Zonas de Vuelo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg: #0b0d11;
+  --surface: #13161e;
+  --surface2: #1a1e2a;
+  --border: #242836;
+  --green: #00e87a;
+  --red: #ff4d4d;
+  --yellow: #ffcc00;
+  --blue: #4da6ff;
+  --text: #edf0f7;
+  --dim: #606880;
+  --dim2: #404660;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; overflow:hidden; }
+body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; display:flex; flex-direction:column; }
+
+/* ── TOPBAR ── */
+.topbar {
+  height:52px; background:var(--surface); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0; z-index:1000;
+}
+.logo { font-family:'Syne',sans-serif; font-weight:800; font-size:17px; letter-spacing:-0.5px; }
+.logo em { color:var(--green); font-style:normal; }
+.topbar-pills { margin-left:auto; display:flex; gap:8px; align-items:center; }
+.pill {
+  font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.5px;
+  padding:3px 9px; border-radius:99px; display:flex; align-items:center; gap:5px;
+}
+.pill-green { background:rgba(0,232,122,0.1); color:var(--green); border:1px solid rgba(0,232,122,0.2); }
+.pill-blue  { background:rgba(77,166,255,0.1); color:var(--blue);  border:1px solid rgba(77,166,255,0.2); }
+.dot { width:5px; height:5px; border-radius:50%; animation:pulse 2s ease-in-out infinite; }
+.dot-green { background:var(--green); }
+.dot-blue  { background:var(--blue); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ── MAIN LAYOUT ── */
+.main { flex:1; display:flex; overflow:hidden; position:relative; }
+#map { flex:1; z-index:1; }
+
+/* ── DESKTOP PANEL ── */
+.panel {
+  width:320px; background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; z-index:10;
+}
+.panel-scroll { flex:1; overflow-y:auto; padding:14px; }
+.panel-scroll::-webkit-scrollbar { width:2px; }
+.panel-scroll::-webkit-scrollbar-thumb { background:var(--border); }
+
+/* ── SEARCH ── */
+.search-wrap { position:relative; margin-bottom:12px; }
+.search-wrap input {
+  width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+  padding:10px 12px 10px 38px; font-family:'Inter',sans-serif; font-size:13px; outline:none;
+  border-radius:6px; transition:border-color 0.15s;
+}
+.search-wrap input:focus { border-color:var(--green); }
+.search-wrap input::placeholder { color:var(--dim); }
+.search-icon { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--dim); font-size:15px; pointer-events:none; }
+
+/* ── LOCATION BUTTON ── */
+.loc-btn {
+  width:100%; padding:11px; border-radius:6px; border:1px solid rgba(77,166,255,0.3);
+  background:rgba(77,166,255,0.08); color:var(--blue); font-family:'Inter',sans-serif;
+  font-size:13px; font-weight:500; cursor:pointer; transition:all 0.15s;
+  display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px;
+}
+.loc-btn:hover { background:rgba(77,166,255,0.15); }
+.loc-btn:active { transform:scale(0.98); }
+
+/* simulate button */
+.sim-btn {
+  width:100%; padding:9px; border-radius:6px; border:1px solid var(--border);
+  background:transparent; color:var(--dim); font-family:'Inter',sans-serif;
+  font-size:12px; cursor:pointer; transition:all 0.15s; margin-bottom:14px; margin-top:-8px;
+}
+.sim-btn:hover { color:var(--text); border-color:var(--dim); }
+
+/* ── SECTION LABEL ── */
+.slbl {
+  font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:3px;
+  color:var(--dim); text-transform:uppercase; margin-bottom:8px; margin-top:14px;
+}
+
+/* ── FILTERS ── */
+.filters { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+.fbtn {
+  font-size:11px; font-weight:500; padding:5px 11px; border-radius:99px;
+  border:1px solid var(--border); background:transparent; color:var(--dim);
+  cursor:pointer; transition:all 0.15s; font-family:'Inter',sans-serif;
+}
+.fbtn:hover { border-color:var(--text); color:var(--text); }
+.fbtn.on { color:#000; border-color:transparent; }
+.fbtn.on.all  { background:var(--text); color:var(--bg); }
+.fbtn.on.g    { background:var(--green); }
+.fbtn.on.y    { background:var(--yellow); }
+.fbtn.on.r    { background:var(--red); color:#fff; }
+
+/* ── WEATHER ── */
+.weather-box { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:8px; }
+.weather-empty { text-align:center; color:var(--dim); font-size:12px; padding:10px 0; }
+.weather-top { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.w-icon { font-size:36px; line-height:1; }
+.w-temp { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; line-height:1; }
+.w-desc { font-size:12px; color:var(--dim); margin-top:3px; }
+.w-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.w-cell { background:rgba(255,255,255,0.03); border-radius:6px; padding:8px; text-align:center; }
+.w-val { font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:500; margin-bottom:2px; }
+.w-lbl { font-size:9px; color:var(--dim); letter-spacing:1.5px; text-transform:uppercase; font-family:'IBM Plex Mono',monospace; }
+.wg { color:var(--green); } .wy { color:var(--yellow); } .wr { color:var(--red); }
+
+/* ── VERDICT ── */
+.verdict {
+  padding:10px 14px; border-radius:6px; margin-bottom:10px;
+  display:flex; align-items:center; gap:10px; font-size:13px; font-weight:500;
+}
+.v-ok   { background:rgba(0,232,122,0.08); border:1px solid rgba(0,232,122,0.2); color:var(--green); }
+.v-warn { background:rgba(255,204,0,0.08);  border:1px solid rgba(255,204,0,0.2);  color:var(--yellow); }
+.v-no   { background:rgba(255,77,77,0.08);  border:1px solid rgba(255,77,77,0.2);  color:var(--red); }
+
+/* ── ZONE CARD ── */
+.zcard {
+  background:var(--bg); border:1px solid var(--border); border-radius:8px;
+  padding:12px; margin-bottom:7px; cursor:pointer; transition:all 0.15s;
+}
+.zcard:hover { border-color:rgba(255,255,255,0.15); }
+.zcard.sel { border-color:var(--green); background:rgba(0,232,122,0.04); }
+.zcard-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px; gap:8px; }
+.zname { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; line-height:1.3; }
+.zbadge { font-size:9px; font-family:'IBM Plex Mono',monospace; padding:3px 7px; border-radius:99px; white-space:nowrap; flex-shrink:0; }
+.zb-g { background:rgba(0,232,122,0.12); color:var(--green); border:1px solid rgba(0,232,122,0.25); }
+.zb-y { background:rgba(255,204,0,0.12);  color:var(--yellow); border:1px solid rgba(255,204,0,0.25); }
+.zb-r { background:rgba(255,77,77,0.12);  color:var(--red);  border:1px solid rgba(255,77,77,0.25); }
+.zregion { font-size:11px; color:var(--dim); margin-bottom:6px; }
+.zmeta { display:flex; gap:10px; }
+.zmeta span { font-size:11px; color:var(--dim); }
+.zmeta strong { color:var(--text); }
+
+/* ── LINKS DGAC ── */
+.dgac-link {
+  display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:6px;
+  border:1px solid var(--border); background:var(--bg); color:var(--text);
+  text-decoration:none; margin-bottom:6px; transition:all 0.15s;
+}
+.dgac-link:hover { border-color:var(--blue); }
+.dgac-link .di { font-size:16px; flex-shrink:0; }
+.dgac-link .dt { flex:1; }
+.dgac-link .dt b { font-size:12px; font-weight:600; display:block; margin-bottom:2px; }
+.dgac-link .dt small { font-size:10px; color:var(--dim); font-family:'IBM Plex Mono',monospace; }
+.dgac-link .da { color:var(--dim); font-size:12px; }
+
+.warn-box { padding:10px 12px; background:rgba(255,77,77,0.06); border:1px solid rgba(255,77,77,0.15); border-radius:6px; font-size:11px; color:#ff8070; line-height:1.6; margin-bottom:8px; margin-top:4px; }
+.legal-box { padding:12px; background:rgba(255,204,0,0.05); border:1px solid rgba(255,204,0,0.15); border-radius:6px; font-size:10px; color:#a89060; line-height:1.7; font-family:'IBM Plex Mono',monospace; margin-top:8px; }
+.legal-box strong { color:#c8b070; }
+
+/* ── BOTTOM BAR ── */
+.bottombar {
+  height:32px; background:var(--surface); border-top:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:20px; flex-shrink:0; z-index:100;
+}
+.bottombar span { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--dim); letter-spacing:0.5px; }
+.bottombar strong { color:var(--text); }
+
+/* ── MAP LEGEND ── */
+.map-legend {
+  position:absolute; bottom:50px; right:12px; z-index:500;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px;
+}
+.ml-title { font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:2px; color:var(--dim); text-transform:uppercase; margin-bottom:8px; }
+.ml-row { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--dim); margin-bottom:5px; }
+.ml-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
+/* ── MOBILE DRAWER ── */
+.drawer-handle {
+  display:none; width:36px; height:4px; background:var(--border); border-radius:2px;
+  margin:10px auto 0; cursor:pointer;
+}
+.drawer-tabs {
+  display:none; border-bottom:1px solid var(--border); padding:0 14px; gap:0;
+}
+.dtab {
+  font-size:12px; font-weight:500; padding:10px 14px; color:var(--dim);
+  cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s;
+}
+.dtab.on { color:var(--green); border-bottom-color:var(--green); }
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-container { background:#0b0d11; }
+.leaflet-control-zoom a { background:var(--surface) !important; color:var(--text) !important; border-color:var(--border) !important; border-radius:6px !important; }
+.leaflet-control-attribution { background:rgba(11,13,17,0.8) !important; color:var(--dim) !important; font-size:8px !important; }
+.leaflet-control-attribution a { color:var(--dim) !important; }
+.leaflet-popup-content-wrapper { background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.6); }
+.leaflet-popup-tip { background:var(--surface); }
+.leaflet-popup-content { margin:14px 16px; }
+
+/* ── MOBILE ── */
+@media(max-width:768px) {
+  .panel {
+    width:100%; position:absolute; bottom:32px; left:0; right:0;
+    border-right:none; border-top:1px solid var(--border); border-radius:16px 16px 0 0;
+    height:55%; z-index:200; transition:height 0.3s ease;
+  }
+  .panel.expanded { height:85%; }
+  .drawer-handle { display:block; }
+  .drawer-tabs { display:flex; }
+  .panel-scroll { padding:10px 14px 14px; }
+  .map-legend { bottom:calc(55% + 44px); }
+  .topbar .pill-green { display:none; }
+  #coords-bar { display:none; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">Aero<em>Zona</em> Chile</div>
+  <div class="topbar-pills">
+    <div class="pill pill-green"><div class="dot dot-green"></div>DGAC Activo</div>
+    <div class="pill pill-blue"><div class="dot dot-blue"></div><span id="clock">--:--</span></div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- PANEL -->
+  <div class="panel" id="panel">
+    <div class="drawer-handle" onclick="toggleDrawer()"></div>
+
+    <!-- TABS (mobile only) -->
+    <div class="drawer-tabs">
+      <div class="dtab on" onclick="switchTab('zonas',this)">Zonas</div>
+      <div class="dtab" onclick="switchTab('clima',this)">Clima</div>
+      <div class="dtab" onclick="switchTab('dgac',this)">DGAC</div>
+    </div>
+
+    <div class="panel-scroll">
+
+      <!-- TAB: ZONAS -->
+      <div id="tab-zonas">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search" placeholder="Buscar zona o región..." oninput="filterZones()">
+        </div>
+
+        <button class="loc-btn" onclick="getLocation()">
+          📍 Ver zonas cerca de mí
+        </button>
+        <button class="sim-btn" onclick="simSantiago()">
+          ó usar Santiago como referencia
+        </button>
+
+        <div class="slbl">Filtrar</div>
+        <div class="filters">
+          <button class="fbtn on all" onclick="setFilter('all',this)">Todos</button>
+          <button class="fbtn" onclick="setFilter('libre',this)">🟢 Libre</button>
+          <button class="fbtn" onclick="setFilter('notif',this)">🟡 Notif.</button>
+          <button class="fbtn" onclick="setFilter('rest',this)">🔴 Restringido</button>
+        </div>
+
+        <div class="slbl">Zonas <span id="zcount" style="color:var(--green)"></span></div>
+        <div id="zlist"></div>
+      </div>
+
+      <!-- TAB: CLIMA -->
+      <div id="tab-clima" style="display:none">
+        <button class="loc-btn" onclick="getLocation()" style="margin-top:4px;">
+          📍 Ver clima en mi ubicación
+        </button>
+        <button class="sim-btn" onclick="simSantiago()">
+          ó usar Santiago como referencia
+        </button>
+        <div id="verdict" style="display:none"></div>
+        <div class="weather-box" id="wbox">
+          <div class="weather-empty">Activa tu ubicación para ver el clima en tiempo real</div>
+        </div>
+      </div>
+
+      <!-- TAB: DGAC -->
+      <div id="tab-dgac" style="display:none">
+        <div class="slbl" style="margin-top:4px;">Trámites oficiales</div>
+
+        <a href="https://www.dgac.gob.cl/operacion-de-drones/" target="_blank" class="dgac-link">
+          <div class="di">🚁</div>
+          <div class="dt"><b>Registro de Drones / RPA</b><small>Registro obligatorio · DAN 151</small></div>
+          <div class="da">→</div>
+        </a>
+        <a href="https://www.dgac.gob.cl/como-operar-un-dron-en-chile/" target="_blank" class="dgac-link">
+          <div class="di">📋</div>
+          <div class="dt"><b>Normativa de Operación</b><small>DAN 91 · Zonas no pobladas</small></div>
+          <div class="da">→</div>
+        </a>
+        <a href="https://www.dgac.gob.cl/actualizacion-registro-provisorio-de-rpas-o-drones/" target="_blank" class="dgac-link">
+          <div class="di">📝</div>
+          <div class="dt"><b>Solicitud de Registro RPAS</b><small>Regularización y nuevos registros</small></div>
+          <div class="da">→</div>
+        </a>
+        <a href="https://ais.dgac.gob.cl/" target="_blank" class="dgac-link" style="border-color:rgba(255,204,0,0.2)">
+          <div class="di">⚡</div>
+          <div class="dt"><b>AIS Chile — NOTAM</b><small>Consultar y publicar NOTAM activos</small></div>
+          <div class="da">→</div>
+        </a>
+        <a href="mailto:pplasser@dgac.gob.cl" class="dgac-link" style="border-color:rgba(0,232,122,0.2)">
+          <div class="di">✉️</div>
+          <div class="dt"><b>Contacto Directo DGAC</b><small>Patricio Plasser · Aeronavegabilidad</small></div>
+          <div class="da">→</div>
+        </a>
+
+        <div class="warn-box">⚠️ Para cohetes: tramitar también ante DGMN bajo Ley 17.798</div>
+
+        <div class="legal-box">
+          <div style="color:var(--yellow);font-weight:500;margin-bottom:6px;letter-spacing:2px;">⚠ AVISO LEGAL</div>
+          Información de carácter <strong>referencial</strong>. No reemplaza el AIP Chile, NOTAM vigentes ni normativas DGAC. Verificar condiciones reales antes de operar.<br><br>
+          DAN 91 · DAN 151 · Ley 17.798<br>
+          <span style="color:var(--blue)">www.dgac.gob.cl</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+
+  <!-- LEGEND -->
+  <div class="map-legend">
+    <div class="ml-title">Leyenda</div>
+    <div class="ml-row"><div class="ml-dot" style="background:var(--green)"></div>Zona libre</div>
+    <div class="ml-row"><div class="ml-dot" style="background:var(--yellow)"></div>Notif. DGAC</div>
+    <div class="ml-row"><div class="ml-dot" style="background:var(--red)"></div>Restringido</div>
+    <div class="ml-row"><div class="ml-dot" style="background:var(--blue)"></div>Tu ubicación</div>
+  </div>
+
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bottombar">
+  <span>Fuente: <strong>AIP Chile · DGAC</strong></span>
+  <span id="coords-bar">Lat/Lon: <strong>—</strong></span>
+  <span style="margin-left:auto">v2.0 · AeroZona Chile 2026 · Datos referenciales</span>
+</div>
+
+<script>
+// ── CLOCK ──
+setInterval(()=>{
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+},1000);
+document.getElementById('clock').textContent =
+  new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+
+// ── ZONES DATA ──
+const ZONES = [
+  // Norte Grande
+  { id:1,  name:"Pampa Tamarugal",          region:"Tarapacá · I Región",       lat:-20.20, lng:-69.70, status:"libre", maxAlt:5000, area:"~50 km²",  notes:"Una de las mejores zonas del país. Cielo despejado ~300 días/año, sin tráfico aéreo significativo.", dgac:"Sin restricciones activas", r:18000 },
+  { id:2,  name:"Pampa El Toco",             region:"Tarapacá · I Región",       lat:-20.80, lng:-69.50, status:"libre", maxAlt:4000, area:"~30 km²",  notes:"Pampa abierta, baja humedad, excelente visibilidad. Sin obstáculos relevantes.", dgac:"Sin restricciones activas", r:15000 },
+  { id:3,  name:"Desierto de Atacama Norte", region:"Antofagasta · II Región",   lat:-24.50, lng:-69.20, status:"libre", maxAlt:5000, area:"~80 km²",  notes:"Zona amplia con visibilidad excepcional. Muy baja densidad de tráfico aéreo.", dgac:"Sin restricciones activas", r:20000 },
+  { id:4,  name:"Salar de Atacama",          region:"Antofagasta · II Región",   lat:-23.50, lng:-68.25, status:"notif", maxAlt:2000, area:"~30 km²",  notes:"Zona turística protegida. Coordinar con CONAF y verificar NOTAM antes de operar.", dgac:"Verificar NOTAM — zona protegida", r:12000 },
+  { id:5,  name:"Llanos de Challe",          region:"Atacama · III Región",      lat:-28.05, lng:-70.72, status:"libre", maxAlt:3000, area:"~15 km²",  notes:"Zona rural despejada, lejos de aerovías. Ideal para alta potencia.", dgac:"Sin restricciones activas", r:12000 },
+  { id:6,  name:"Desierto Florido Copiapó",  region:"Atacama · III Región",      lat:-27.40, lng:-70.30, status:"libre", maxAlt:3500, area:"~25 km²",  notes:"Excelente zona. Lejos de rutas aéreas civiles.", dgac:"Sin restricciones activas", r:14000 },
+  // Norte Chico
+  { id:7,  name:"Valle del Elqui",           region:"Coquimbo · IV Región",      lat:-29.90, lng:-70.50, status:"notif", maxAlt:1000, area:"~8 km²",   notes:"Valle estrecho con vientos variables. Turismo activo. Notificar DGAC.", dgac:"Notificación previa recomendada", r:7000 },
+  { id:8,  name:"Sector Ovalle Norte",       region:"Coquimbo · IV Región",      lat:-30.40, lng:-71.10, status:"libre", maxAlt:2000, area:"~12 km²",  notes:"Zona rural con buena visibilidad. Alejada de aerovías principales.", dgac:"Sin restricciones activas", r:9000 },
+  { id:9,  name:"Pampa Illapel",             region:"Coquimbo · IV Región",      lat:-31.60, lng:-71.20, status:"libre", maxAlt:1800, area:"~10 km²",  notes:"Zona agrícola-rural. Coordinar con propietarios del terreno.", dgac:"Sin restricciones activas", r:8000 },
+  // Zona Central
+  { id:10, name:"Valle del Maipo Oriente",   region:"Metropolitana · RM",        lat:-33.70, lng:-70.10, status:"notif", maxAlt:400,  area:"~5 km²",   notes:"Próximo a aerovías del ARTCC Santiago. Requiere NOTAM con 48h de anticipación.", dgac:"NOTAM obligatorio — 48h anticipación", r:8000 },
+  { id:11, name:"Cajón del Maipo",           region:"Metropolitana · RM",        lat:-33.85, lng:-70.05, status:"notif", maxAlt:600,  area:"~8 km²",   notes:"Valle encajonado, vientos variables. Coordinar con AIS Chile.", dgac:"Notificación previa DGAC obligatoria", r:6000 },
+  { id:12, name:"Aeródromo Tobalaba CTR",    region:"Metropolitana · RM",        lat:-33.65, lng:-70.54, status:"rest",  maxAlt:0,    area:"CTR",      notes:"Zona de control del aeródromo. Prohibido sin autorización ATC.", dgac:"PROHIBIDO — Espacio aéreo controlado", r:5000 },
+  { id:13, name:"TMA Santiago (AMB)",        region:"Metropolitana · RM",        lat:-33.39, lng:-70.79, status:"rest",  maxAlt:0,    area:"TMA",      notes:"Área terminal Aeropuerto Internacional. Absolutamente prohibido.", dgac:"PROHIBIDO — TMA Santiago", r:15000 },
+  { id:14, name:"Llano Navidad",             region:"O'Higgins · VI Región",     lat:-34.10, lng:-71.80, status:"libre", maxAlt:1500, area:"~10 km²",  notes:"Zona agrícola-rural tranquila. Coordinar con propietarios del terreno.", dgac:"Sin restricciones activas", r:8000 },
+  { id:15, name:"Sector Colbún",             region:"Maule · VII Región",        lat:-35.70, lng:-71.40, status:"libre", maxAlt:1200, area:"~8 km²",   notes:"Zona rural junto a embalse. Verificar con propietarios.", dgac:"Sin restricciones activas", r:7000 },
+  { id:16, name:"Aeródromo Curicó CTR",      region:"Maule · VII Región",        lat:-34.97, lng:-71.22, status:"rest",  maxAlt:0,    area:"CTR",      notes:"Aeródromo activo. Prohibido operar sin autorización.", dgac:"PROHIBIDO — Espacio controlado", r:4000 },
+  // Sur
+  { id:17, name:"Sector Lonquimay",          region:"La Araucanía · IX Región",  lat:-38.40, lng:-71.20, status:"notif", maxAlt:800,  area:"~12 km²",  notes:"Proximidad a aeródromos menores. Verificar NOTAM activos.", dgac:"Verificar NOTAM activos", r:10000 },
+  { id:18, name:"Llano Malleco",             region:"La Araucanía · IX Región",  lat:-37.80, lng:-71.70, status:"libre", maxAlt:1000, area:"~10 km²",  notes:"Zona rural sin restricciones activas. Buen acceso desde Ruta 5.", dgac:"Sin restricciones activas", r:8000 },
+  { id:19, name:"Valle Futaleufú",           region:"Los Lagos · X Región",      lat:-43.20, lng:-71.90, status:"libre", maxAlt:1500, area:"~15 km²",  notes:"Patagonia norte. Vientos variables. Verificar condiciones locales.", dgac:"Sin restricciones activas", r:10000 },
+  { id:20, name:"Sector Coyhaique Norte",    region:"Aysén · XI Región",         lat:-45.20, lng:-72.00, status:"notif", maxAlt:600,  area:"~8 km²",   notes:"Proximidad al aeródromo de Balmaceda. Requiere notificación.", dgac:"Notificación previa obligatoria", r:8000 },
+  { id:21, name:"Pampa Punta Arenas",        region:"Magallanes · XII Región",   lat:-53.20, lng:-70.90, status:"notif", maxAlt:500,  area:"~10 km²",  notes:"Vientos extremos frecuentes. Zona austral. Verificar siempre condiciones.", dgac:"Verificar NOTAM — vientos extremos", r:10000 },
+];
+
+const colorMap = { libre:'#00e87a', notif:'#ffcc00', rest:'#ff4d4d' };
+
+// ── MAP ──
+const map = L.map('map',{center:[-33.45,-70.65],zoom:5,zoomControl:true});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:18}).addTo(map);
+map.on('mousemove',e=>{
+  const el=document.getElementById('coords-bar');
+  if(el) el.innerHTML=`Lat/Lon: <strong>${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}</strong>`;
+});
+
+// ── MARKERS ──
+const mks={}, cirs={};
+function mkIcon(s){
+  const c=colorMap[s];
+  return L.divIcon({className:'',html:`<div style="width:13px;height:13px;background:${c};border-radius:50%;border:2px solid rgba(255,255,255,0.25);box-shadow:0 0 8px ${c}90;"></div>`,iconSize:[13,13],iconAnchor:[6,6]});
+}
+function mkPopup(z){
+  const lbl={libre:'LIBRE',notif:'NOTIF. DGAC',rest:'RESTRINGIDO'};
+  const c=colorMap[z.status];
+  return `<div style="font-family:Inter,sans-serif;min-width:210px;font-size:13px;">
+    <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;">${z.name}</div>
+    <div style="font-size:10px;color:#606880;font-family:'IBM Plex Mono',monospace;margin-bottom:8px;">${z.region}</div>
+    <span style="background:${c}20;border:1px solid ${c}40;color:${c};font-family:'IBM Plex Mono',monospace;font-size:9px;padding:3px 8px;border-radius:99px;">${lbl[z.status]}</span>
+    <div style="margin-top:10px;font-size:12px;color:#8090b0;line-height:1.5;">${z.notes}</div>
+    <div style="margin-top:8px;font-size:11px;color:#606880;font-family:'IBM Plex Mono',monospace;">
+      Alt. máx: <span style="color:#edf0f7;">${z.maxAlt}m</span><br>
+      DGAC: <span style="color:${c};">${z.dgac}</span>
+    </div>
+  </div>`;
+}
+ZONES.forEach(z=>{
+  const m=L.marker([z.lat,z.lng],{icon:mkIcon(z.status)}).addTo(map).bindPopup(mkPopup(z));
+  const c=L.circle([z.lat,z.lng],{radius:z.r,color:colorMap[z.status],fillColor:colorMap[z.status],fillOpacity:0.05,weight:1,opacity:0.35}).addTo(map);
+  m.on('click',()=>selectZone(z.id));
+  mks[z.id]=m; cirs[z.id]=c;
+});
+
+// ── LIST ──
+let activeFilter='all', selId=null;
+function renderList(zones){
+  const list=document.getElementById('zlist');
+  list.innerHTML='';
+  document.getElementById('zcount').textContent=`(${zones.length})`;
+  const lbl={libre:'LIBRE',notif:'NOTIF.',rest:'NO OPERAR'};
+  const bc={libre:'zb-g',notif:'zb-y',rest:'zb-r'};
+  zones.forEach(z=>{
+    const d=document.createElement('div');
+    d.className=`zcard${selId===z.id?' sel':''}`;
+    d.id=`zc-${z.id}`;
+    d.innerHTML=`
+      <div class="zcard-top">
+        <div class="zname">${z.name}</div>
+        <div class="zbadge ${bc[z.status]}">${lbl[z.status]}</div>
+      </div>
+      <div class="zregion">${z.region}</div>
+      <div class="zmeta">
+        <span>↑ <strong>${z.maxAlt}m</strong></span>
+        <span>⊙ <strong>${z.area}</strong></span>
+      </div>`;
+    d.onclick=()=>selectZone(z.id);
+    list.appendChild(d);
+  });
+}
+function filterZones(){
+  const q=document.getElementById('search').value.toLowerCase();
+  renderList(ZONES.filter(z=>{
+    const mf=activeFilter==='all'||z.status===activeFilter;
+    const ms=z.name.toLowerCase().includes(q)||z.region.toLowerCase().includes(q);
+    return mf&&ms;
+  }));
+}
+function setFilter(f,btn){
+  activeFilter=f;
+  document.querySelectorAll('.fbtn').forEach(b=>{b.classList.remove('on','all','g','y','r');});
+  btn.classList.add('on');
+  if(f==='all') btn.classList.add('all');
+  if(f==='libre') btn.classList.add('g');
+  if(f==='notif') btn.classList.add('y');
+  if(f==='rest') btn.classList.add('r');
+  filterZones();
+}
+function selectZone(id){
+  selId=id;
+  const z=ZONES.find(x=>x.id===id); if(!z) return;
+  filterZones();
+  map.flyTo([z.lat,z.lng],10,{duration:1.2});
+  mks[id].openPopup();
+  setTimeout(()=>{ const c=document.getElementById(`zc-${id}`); if(c) c.scrollIntoView({behavior:'smooth',block:'nearest'}); },120);
+}
+
+// ── GEOLOCATION ──
+let userMk=null;
+function getLocation(){
+  if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
+  navigator.geolocation.getCurrentPosition(
+    pos=>handlePosition(pos.coords.latitude, pos.coords.longitude),
+    ()=>alert('No se pudo obtener la ubicación.\nSi el problema persiste, usa "Santiago como referencia".')
+  );
+}
+function simSantiago(){ handlePosition(-33.4489,-70.6693); }
+function handlePosition(lat,lng){
+  if(userMk) map.removeLayer(userMk);
+  userMk=L.marker([lat,lng],{icon:L.divIcon({className:'',html:`<div style="width:15px;height:15px;background:#4da6ff;border-radius:50%;border:3px solid rgba(255,255,255,0.8);box-shadow:0 0 12px #4da6ff;"></div>`,iconSize:[15,15],iconAnchor:[7,7]})}).addTo(map).bindPopup('📍 Tu ubicación').openPopup();
+  map.flyTo([lat,lng],9,{duration:1.4});
+  fetchWeather(lat,lng);
+  nearestZone(lat,lng);
+}
+
+// ── WEATHER ──
+async function fetchWeather(lat,lng){
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,weathercode&wind_speed_unit=ms`);
+    const d=await r.json(); const c=d.current;
+    const ws=c.wind_speed_10m,tmp=c.temperature_2m,hum=c.relative_humidity_2m,wd=c.wind_direction_10m,wc=c.weathercode;
+    const icons={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'⛈️',71:'❄️',73:'❄️',80:'🌦️',95:'⛈️'};
+    const icon=icons[wc]||'🌡️';
+    const wc2=ws<5?'wg':ws<10?'wy':'wr';
+    const wl=ws<5?'Óptimo':ws<10?'Moderado':'Alto — precaución';
+    const dirs=['N','NE','E','SE','S','SO','O','NO'];
+    const dir=dirs[Math.round(wd/45)%8];
+    document.getElementById('wbox').innerHTML=`
+      <div class="weather-top">
+        <div class="w-icon">${icon}</div>
+        <div><div class="w-temp">${tmp.toFixed(1)}°C</div><div class="w-desc">Humedad ${hum}%</div></div>
+      </div>
+      <div class="w-grid">
+        <div class="w-cell"><div class="w-val ${wc2}">${ws.toFixed(1)} m/s</div><div class="w-lbl">Viento</div></div>
+        <div class="w-cell"><div class="w-val">${dir}</div><div class="w-lbl">Dirección</div></div>
+        <div class="w-cell"><div class="w-val ${wc2}">${wl}</div><div class="w-lbl">Estado</div></div>
+        <div class="w-cell"><div class="w-val">${hum}%</div><div class="w-lbl">Humedad</div></div>
+      </div>`;
+    const vEl=document.getElementById('verdict');
+    vEl.style.display='flex';
+    if(ws<5&&[0,1,2].includes(wc)){
+      vEl.className='verdict v-ok';
+      vEl.innerHTML='✅ Condiciones óptimas para operar';
+    } else if(ws<10){
+      vEl.className='verdict v-warn';
+      vEl.innerHTML='⚠️ Condiciones aceptables — monitorear viento';
+    } else {
+      vEl.className='verdict v-no';
+      vEl.innerHTML='❌ Viento alto — no recomendado operar';
+    }
+  } catch(e){
+    document.getElementById('wbox').innerHTML='<div class="weather-empty">Error al cargar clima — verifica tu conexión</div>';
+  }
+}
+
+// ── NEAREST ZONE ──
+function nearestZone(lat,lng){
+  const R=6371;
+  const sorted=ZONES.map(z=>{
+    const dLat=(z.lat-lat)*Math.PI/180, dLng=(z.lng-lng)*Math.PI/180;
+    const a=Math.sin(dLat/2)**2+Math.cos(lat*Math.PI/180)*Math.cos(z.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+    return{...z,dist:R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))};
+  }).sort((a,b)=>a.dist-b.dist);
+  if(sorted[0]) selectZone(sorted[0].id);
+}
+
+// ── MOBILE DRAWER ──
+let drawerExpanded=false;
+function toggleDrawer(){
+  drawerExpanded=!drawerExpanded;
+  document.getElementById('panel').classList.toggle('expanded',drawerExpanded);
+}
+
+// ── MOBILE TABS ──
+function switchTab(tab,btn){
+  ['zonas','clima','dgac'].forEach(t=>{
+    document.getElementById(`tab-${t}`).style.display=t===tab?'block':'none';
+  });
+  document.querySelectorAll('.dtab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+// ── INIT ──
+renderList(ZONES);
+</script>
+</body>
+</html>
